@@ -1,0 +1,27 @@
+import { THREE,mesh,group,mat,distance } from './rendering.js';
+export function createWorld(g){
+ g.scene.background=new THREE.Color('#b6dccc');g.scene.fog=new THREE.Fog('#b6dccc',75,135);
+ g.scene.add(new THREE.HemisphereLight(0xfff4d7,0x527e72,2.5));const sun=new THREE.DirectionalLight(0xffecd1,3.2);sun.position.set(-18,35,15);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-48,right:48,top:48,bottom:-48,far:110});sun.shadow.bias=-.001;g.scene.add(sun);
+ const ground=mesh('box',0x85af68,0,-.35,0,120,.6,120);g.scene.add(ground);
+ const loader=new THREE.TextureLoader();for(const [key,m,color] of [['grass',ground,0x85af68]])loader.load(`${import.meta.env.BASE_URL}textures/${key}.png`,t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(40,40);t.colorSpace=THREE.SRGBColorSpace;m.material=new THREE.MeshToonMaterial({map:t,color:0xffffff});},undefined,()=>{m.material=mat(color);});
+ g.textures={};for(const n of ['bark','stone','core'])loader.load(`${import.meta.env.BASE_URL}textures/${n}.png`,t=>{t.colorSpace=THREE.SRGBColorSpace;g.textures[n]=new THREE.MeshToonMaterial({map:t});if(n==='bark'){g.trees.forEach(tr=>tr.model.children[0].material=g.textures[n]);if(g.forestMeshes){g.forestMeshes[0].material=g.textures[n];for(let i=0;i<g.trees.length;i++)g.forestMeshes[0].setColorAt(i,new THREE.Color(0xffffff));g.forestMeshes[0].instanceColor.needsUpdate=true;}}if(n==='core')g.core.model.children[0].material=g.textures[n];if(n==='bark'&&g.buildings)g.buildings.list.forEach(b=>b.model.children[0].material=g.textures[n]);},undefined,()=>{});
+ const grid=new THREE.GridHelper(76,38,0x729c5d,0x799f62);grid.position.y=-.035;grid.material.transparent=true;grid.material.opacity=.38;g.scene.add(grid);
+ const path=mesh('cylinder',0xc9bc8b,0,-.025,0,5,.05,5);g.scene.add(path);
+ g.trees=[];let seed=91;const rand=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
+ for(let i=0;i<390;i++){const a=rand()*Math.PI*2,r=19+rand()*31;const x=Math.cos(a)*r,z=Math.sin(a)*r; if(Math.abs(x)<3&&z>0)continue;const h=4+rand()*4;
+ const model=group(mesh('cylinder',0x91633d,0,h*.33,0,.24,h*.66,.24),mesh('cone',i%3===0?0x39865c:0x286e50,0,h*.72,0,1.5,h*.7,1.5),mesh('cone',0x43966a,0,h*.95,0,1.1,h*.5,1.1));model.position.set(x,0,z);model.rotation.y=rand()*6.28;g.scene.add(model);g.trees.push({x,z,height:h*1.2,model,progress:0,alive:true,regrow:0});}
+ // Static forest batches: only three draw calls, while each tree remains harvestable.
+ g.forestMeshes=[];for(let part=0;part<3;part++){const sample=g.trees[0].model.children[part];const batch=new THREE.InstancedMesh(sample.geometry,mat(0xffffff),g.trees.length);batch.castShadow=true;batch.receiveShadow=true;batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);for(let i=0;i<g.trees.length;i++){const tree=g.trees[i];tree.model.updateMatrixWorld(true);const child=tree.model.children[part];batch.setMatrixAt(i,child.matrixWorld);batch.setColorAt(i,child.material.color);tree.instanceMatrices??=[];tree.instanceMatrices[part]=child.matrixWorld.clone();tree.instanceIndex=i;}batch.computeBoundingSphere();g.scene.add(batch);g.forestMeshes.push(batch);}for(const tree of g.trees)g.scene.remove(tree.model);
+ // Pebbles and meadow flowers create a miniature diorama.
+ for(let i=0;i<110;i++){let a=rand()*6.28,r=6+rand()*12,x=Math.cos(a)*r,z=Math.sin(a)*r;const rock=mesh(i%4===0?'sphere':'cone',i%4===0?0x92a491:0xd9dfa0,x,.12,z,.13,.25,.13);g.scene.add(rock);}
+ g.core={x:0,z:0,hp:2000,maxHP:2000};g.core.model=group(mesh('box',0xe6d5aa,0,1,0,3,2,3),mesh('box',0x6d8578,0,.2,0,3.8,.4,3.8),mesh('cone',0x307a72,0,3,0,2.6,2.2,2.6),mesh('box',0x663d34,0,.75,1.52,.7,1.3,.08),mesh('sphere',0xc5ffb3,0,4.25,0,.45,.65,.45));g.scene.add(g.core.model);
+ const pole=mesh('cylinder',0xe4d5a6,1.3,3.5,0,.06,3,.06);const flag=mesh('box',0xffd76b,1.8,4.55,0,1,.6,.07);g.core.model.add(pole,flag);
+}
+export function updateForest(g,dt){let nearest=null,best=2.6;for(const t of g.trees){if(!t.alive){t.regrow-=dt;if(t.regrow<=0){t.alive=true;t.model.visible=true;setTreeVisibility(g,t,true);}continue;}const d=distance(t,g.player.pos);if(d<best){nearest=t;best=d;}if(t!==g.harvestTree)t.progress=Math.max(0,t.progress-dt*.4);}
+ g.harvestTree=nearest;if(nearest){nearest.progress+=dt*.42;if(nearest.progress>=1)chopTree(g,nearest);}
+ g.harvestRing.visible=!!g.harvestTree;if(g.harvestTree){g.harvestRing.position.set(nearest.x,nearest.height+1,nearest.z);g.harvestRing.rotation.z=-g.time;g.harvestRing.scale.setScalar(.6+nearest.progress*.35);g.harvestFill.geometry.setDrawRange(0,Math.max(0,Math.floor(nearest.progress*64))*6);}
+}
+export function chopTree(g,t){if(!t.alive)return;t.alive=false;t.progress=0;t.regrow=150;g.wood+=10;g.fx.text('+10 木材',t,0xb4f880);g.fx.puff(t,0x86b95e,7);t.model.visible=false;setTreeVisibility(g,t,false);if(g.harvestTree===t)g.harvestTree=null;}
+
+const hiddenTreeMatrix=new THREE.Matrix4().makeScale(0,0,0);
+function setTreeVisibility(g,t,visible){g.forestMeshes.forEach((batch,i)=>{batch.setMatrixAt(t.instanceIndex,visible?t.instanceMatrices[i]:hiddenTreeMatrix);batch.instanceMatrix.needsUpdate=true;});}

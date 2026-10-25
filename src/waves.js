@@ -1,0 +1,4 @@
+import {waves} from './data/waves.js';
+export function createWaves(g){return {index:-1,elapsed:0,nextIn:18,queue:0,giants:0,spawnIn:0,
+ startNext(){if(this.index>=waves.length-1||this.queue>0||this.giants>0)return;this.index++;const w=waves[this.index];this.elapsed=0;this.nextIn=w.duration;this.queue=w.count;this.giants=w.giants;g.toast(`第 ${w.number} 波 · ${w.giants?'巨人来袭！':'守住林地！'}`,3);},
+ update(dt){this.nextIn-=dt;this.elapsed+=dt;this.spawnIn-=dt;if((g.input.pressed.has('KeyN')||this.nextIn<=0)&&this.queue===0&&this.giants===0&&g.enemies.list.length<200)this.startNext();if(this.index>=0){const w=waves[this.index];if(this.spawnIn<=0&&g.enemies.list.length<200){if(this.queue>0){g.enemies.spawn(w);this.queue--;this.spawnIn=w.interval;}else if(this.giants>0){g.enemies.spawn(w,true);this.giants--;this.spawnIn=3;}}}if(this.index===waves.length-1&&this.queue===0&&this.giants===0&&g.enemies.list.length===0)g.end(true);},get total(){return waves.length;}};}
